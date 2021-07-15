@@ -24,7 +24,7 @@ pub struct StoredPollConfig {
     pub quorum: u8,         // X/100% (percentage)
     pub min_threshold: u8,  // X/100% (percentage)
     pub choices: Vec<String>,
-    pub ended: bool,
+    pub finalized: bool,
     pub valid: bool,
     pub rolling_hash: [u8; 32],
 }

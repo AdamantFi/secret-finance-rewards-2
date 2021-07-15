@@ -60,7 +60,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
             quorum: msg.config.quorum,
             min_threshold: msg.config.min_threshold,
             choices: msg.choices,
-            ended: false,
+            finalized: false,
             valid: false,
             rolling_hash: [0u8; 32],
         },
@@ -137,7 +137,7 @@ pub fn vote<S: Storage, A: Api, Q: Querier>(
     salt: String,
 ) -> StdResult<HandleResponse> {
     let mut config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-    require_vote_ongoing(&config)?;
+    require_vote_ongoing(&env, &config)?;
 
     let staking_pool: SecretContract = TypedStore::attach(&deps.storage).load(STAKING_POOL_KEY)?;
     let voting_power = snip20::balance_query(
@@ -188,7 +188,7 @@ pub fn update_voting_power<S: Storage, A: Api, Q: Querier>(
     new_power: u128,
 ) -> StdResult<HandleResponse> {
     let config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-    require_vote_ongoing(&config)?;
+    require_vote_ongoing(&env, &config)?;
 
     let owner: HumanAddr = TypedStore::attach(&deps.storage).load(OWNER_KEY)?;
     if env.message.sender != owner {
@@ -251,7 +251,7 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
             messages: vec![],
             log: vec![],
             data: Some(to_binary(&FinalizeAnswer {
-                ended: config.ended,
+                finalized: config.finalized,
                 valid: Some(config.valid),
                 choices: Some(config.choices),
                 tally: Some(tally),
@@ -262,7 +262,7 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
             messages: vec![],
             log: vec![],
             data: Some(to_binary(&FinalizeAnswer {
-                ended: false,
+                finalized: false,
                 valid: None,
                 choices: None,
                 tally: None,
@@ -270,7 +270,7 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
         });
     }
 
-    config.ended = true;
+    config.finalized = true;
 
     let tally: Vec<u128> = TypedStore::attach(&deps.storage).load(TALLY_KEY)?;
 
@@ -292,7 +292,7 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
         messages: vec![],
         log: vec![],
         data: Some(to_binary(&FinalizeAnswer {
-            ended: config.ended,
+            finalized: config.finalized,
             valid: Some(config.valid),
             choices: Some(config.choices),
             tally: Some(tally),
@@ -327,7 +327,7 @@ pub fn query_has_voted<S: Storage, A: Api, Q: Querier>(
 
 pub fn query_tally<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
     let config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-    require_vote_ended_and_valid(&config)?; // Hopefully this provide a good enough anonymity set
+    require_vote_finalized_and_valid(&config)?; // Hopefully this provide a good enough anonymity set
 
     let tally: Vec<u128> = TypedStore::attach(&deps.storage).load(TALLY_KEY)?;
     let formatted_tally: Vec<Uint128> = tally.iter().map(|c| Uint128(*c)).collect();
@@ -457,17 +457,17 @@ fn roll_hash(hash: [u8; 32], voter: &HumanAddr, vote: Vote, salt: String) -> [u8
     Sha256::digest(&extended).into()
 }
 
-fn require_vote_ongoing(config: &StoredPollConfig) -> StdResult<()> {
-    if config.ended {
+fn require_vote_ongoing(env: &Env, config: &StoredPollConfig) -> StdResult<()> {
+    if config.end_timestamp < env.block.time {
         return Err(StdError::generic_err("vote has ended"));
     }
 
     Ok(())
 }
 
-fn require_vote_ended_and_valid(config: &StoredPollConfig) -> StdResult<()> {
-    if !config.ended {
-        return Err(StdError::generic_err("vote hasn't ended yet"));
+fn require_vote_finalized_and_valid(config: &StoredPollConfig) -> StdResult<()> {
+    if !config.finalized {
+        return Err(StdError::generic_err("vote hasn't been finalized yet"));
     } else if !config.valid {
         return Err(StdError::generic_err("vote hasn't passed quorum"));
     }
@@ -584,7 +584,7 @@ mod tests {
                     quorum: 33,
                     min_threshold: 0,
                     choices: vec!["Yes".into(), "No".into()],
-                    ended: false,
+                    finalized: false,
                     valid: false,
                     rolling_hash: [0u8; 32]
                 }
@@ -610,14 +610,14 @@ mod tests {
         .unwrap();
 
         let err = query_tally(&deps).unwrap_err();
-        assert_eq!(err, StdError::generic_err("vote hasn't ended yet"));
+        assert_eq!(err, StdError::generic_err("vote hasn't been finalized yet"));
 
         // Finalize
         let mut config: StoredPollConfig = TypedStoreMut::attach(&mut deps.storage)
             .load(CONFIG_KEY)
             .unwrap();
         config.valid = true;
-        config.ended = true;
+        config.finalized = true;
         TypedStoreMut::attach(&mut deps.storage)
             .store(CONFIG_KEY, &config)
             .unwrap();

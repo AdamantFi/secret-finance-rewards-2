@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct FinalizeAnswer {
-    pub ended: bool,
+    pub finalized: bool,
     pub valid: Option<bool>,
     pub choices: Option<Vec<String>>,
     pub tally: Option<Vec<u128>>,
