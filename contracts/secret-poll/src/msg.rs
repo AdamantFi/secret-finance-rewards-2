@@ -39,6 +39,7 @@ pub enum QueryAnswer {
     VoteInfo {
         metadata: PollMetadata,
         config: StoredPollConfig,
+        reveal_com: RevealCommittee,
     },
     HasVoted {
         has_voted: bool,

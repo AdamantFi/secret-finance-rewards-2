@@ -314,7 +314,12 @@ pub fn query_vote_info<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<Binary> {
     let metadata: PollMetadata = TypedStore::attach(&deps.storage).load(METADATA_KEY)?;
     let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-    Ok(to_binary(&QueryAnswer::VoteInfo { metadata, config })?)
+    let reveal_conf: StoredRevealConfig = TypedStore::attach(&deps.storage).load(REVEAL_CONFIG)?;
+    Ok(to_binary(&QueryAnswer::VoteInfo {
+        metadata,
+        config,
+        reveal_com: reveal_conf.committee,
+    })?)
 }
 
 pub fn query_has_voted<S: Storage, A: Api, Q: Querier>(
@@ -587,6 +592,10 @@ mod tests {
                     finalized: false,
                     valid: false,
                     rolling_hash: [0u8; 32]
+                },
+                reveal_com: RevealCommittee {
+                    n: 2,
+                    revealers: vec![HumanAddr("rev1".into()), HumanAddr("rev2".into())],
                 }
             })
             .unwrap()
