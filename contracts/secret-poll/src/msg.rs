@@ -10,7 +10,7 @@ pub struct FinalizeAnswer {
     pub finalized: bool,
     pub valid: Option<bool>,
     pub choices: Option<Vec<String>>,
-    pub tally: Option<Vec<u128>>,
+    pub tally: Option<Vec<Uint128>>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]

@@ -246,7 +246,7 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
     reveal_conf_store.store(REVEAL_CONFIG, &reveal_conf)?;
 
     if reveal_conf.num_revealed > reveal_conf.committee.n {
-        let tally = TypedStore::attach(&deps.storage).load(TALLY_KEY)?; // Already revealed
+        let tally: Vec<u128> = TypedStore::attach(&deps.storage).load(TALLY_KEY)?; // Already revealed
         return Ok(HandleResponse {
             messages: vec![],
             log: vec![],
@@ -254,7 +254,7 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
                 finalized: config.finalized,
                 valid: Some(config.valid),
                 choices: Some(config.choices),
-                tally: Some(tally),
+                tally: Some(tally.iter().map(|c| Uint128(*c)).collect()),
             })?),
         });
     } else if reveal_conf.num_revealed < reveal_conf.committee.n {
@@ -295,7 +295,7 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
             finalized: config.finalized,
             valid: Some(config.valid),
             choices: Some(config.choices),
-            tally: Some(tally),
+            tally: Some(tally.iter().map(|c| Uint128(*c)).collect()),
         })?),
     })
 }
