@@ -223,7 +223,7 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
     rolling_hash: String,
 ) -> StdResult<HandleResponse> {
     let mut config: StoredPollConfig = TypedStoreMut::attach(&mut deps.storage).load(CONFIG_KEY)?;
-    if config.end_timestamp < env.block.time {
+    if env.block.time < config.end_timestamp {
         return Err(StdError::generic_err("vote has not ended yet"));
     }
 
