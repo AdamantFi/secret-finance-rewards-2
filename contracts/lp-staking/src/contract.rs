@@ -352,17 +352,6 @@ fn redeem_hook<S: Storage, A: Api, Q: Querier>(
 
     let mut messages: Vec<CosmosMsg> = vec![];
     let pending = user.locked * reward_pool.acc_reward_per_share / REWARD_SCALE - user.debt;
-    debug_print(format!("DEBUG DEBUG DEBUG"));
-    debug_print(format!(
-        "reward pool: | residue: {} | total supply: {} | acc: {} |",
-        reward_pool.residue, reward_pool.inc_token_supply, reward_pool.acc_reward_per_share
-    ));
-    debug_print(format!(
-        "user: | locked: {} | debt: {} |",
-        user.locked, user.debt
-    ));
-    debug_print(format!("pending: {}", pending));
-    debug_print(format!("DEBUG DEBUG DEBUG"));
     if pending > 0 {
         // Transfer rewards
         messages.push(secret_toolkit::snip20::transfer_msg(
@@ -680,7 +669,6 @@ fn query_token_info<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> S
 }
 
 fn query_total_locked<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
-    // let subs: Vec<SecretContract> = TypedStore::attach(&deps.storage).load(SUBSCRIBERS_KEY)?;
     let reward_pool: RewardPool = TypedStore::attach(&deps.storage).load(REWARD_POOL_KEY)?;
 
     to_binary(&LPStakingQueryAnswer::TotalLocked {
