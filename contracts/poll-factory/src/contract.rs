@@ -106,6 +106,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         QueryMsg::PollCode {} => query_poll_code(deps),
         QueryMsg::Admin {} => query_admin(deps),
         QueryMsg::RevealCommittee {} => query_reveal_com(deps),
+        QueryMsg::MinimumStake {} => query_min_stake(deps),
     }
 }
 
@@ -384,6 +385,14 @@ fn query_reveal_com<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> S
 
     Ok(to_binary(&QueryAnswer::RevealCommittee {
         committee: config.reveal_com,
+    })?)
+}
+
+fn query_min_stake<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
+    let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+
+    Ok(to_binary(&QueryAnswer::MinimumStake {
+        amount: Uint128(config.min_staked),
     })?)
 }
 

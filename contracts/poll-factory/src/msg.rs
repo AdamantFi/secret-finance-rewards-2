@@ -26,6 +26,7 @@ pub enum QueryMsg {
     PollCode {},
     Admin {},
     RevealCommittee {},
+    MinimumStake {},
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -37,6 +38,7 @@ pub enum QueryAnswer {
     PollCode { contract: PollContract },
     Admin { address: HumanAddr },
     RevealCommittee { committee: RevealCommittee },
+    MinimumStake { amount: Uint128 },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
