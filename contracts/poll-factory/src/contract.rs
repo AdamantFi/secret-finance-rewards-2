@@ -132,10 +132,10 @@ fn new_poll<S: Storage, A: Api, Q: Querier>(
         config.staking_pool.address.clone(),
     )?;
     if voting_power.amount.u128() < config.min_staked {
-        StdError::generic_err(format!(
+        return Err(StdError::generic_err(format!(
             "insufficient staked amount. Minimum staked SEFI to create a poll is {}",
             config.min_staked / 1_000_000
-        ));
+        )));
     }
 
     let key = Challenge::new(&env, &config.prng_seed);

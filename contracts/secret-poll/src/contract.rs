@@ -11,7 +11,7 @@ use cosmwasm_std::{
 use scrt_finance::secret_vote_types::{PollHandleMsg, PollInitMsg, PollMetadata};
 use scrt_finance::types::SecretContract;
 use secret_toolkit::snip20;
-use secret_toolkit::snip20::balance_query;
+use secret_toolkit::snip20::{balance_query, Balance};
 use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 use sha2::{Digest, Sha256};
 use std::mem::size_of;
@@ -349,7 +349,7 @@ pub fn query_vote<S: Storage, A: Api, Q: Querier>(
     key: String,
 ) -> StdResult<Binary> {
     let staking_pool: SecretContract = TypedStore::attach(&deps.storage).load(STAKING_POOL_KEY)?;
-    balance_query(
+    let _balance: Balance = balance_query(
         &deps.querier,
         voter.clone(),
         key,
