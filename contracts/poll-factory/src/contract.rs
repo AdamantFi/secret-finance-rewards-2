@@ -413,8 +413,9 @@ fn get_active_polls<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     current_time: u64,
 ) -> StdResult<Vec<ActivePoll>> {
-    let active_polls_to_update: Vec<ActivePoll> =
-        TypedStore::attach(&deps.storage).load(ACTIVE_POLLS_KEY)?;
+    let active_polls_to_update: Vec<ActivePoll> = TypedStore::attach(&deps.storage)
+        .load(ACTIVE_POLLS_KEY)
+        .unwrap_or_default();
 
     let active_polls = active_polls_to_update
         .into_iter()
