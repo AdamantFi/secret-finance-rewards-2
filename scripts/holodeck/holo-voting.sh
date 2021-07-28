@@ -8,12 +8,13 @@ function wait_for_tx() {
   done
 }
 
-export HOUR=3600
+export MINUTE=60
+export HOUR=$((MINUTE * 60))
 export DAY=$((HOUR * 24))
 export WEEK=$((DAY * 7))
 
 export wasm_path=build
-export revision="9"
+export revision="16"
 
 export deployer_name=test
 export deployer_address=$(secretcli keys show -a $deployer_name)
@@ -29,7 +30,7 @@ export sefi_staking_addr="secret1c6qft4w76nreh7whn736k58chu8qy9u57rmp89"
 export sefi_staking_hash="8fcc4c975a67178b8b15b903f99604c2a38be118bcb35751ffde9183a2c6a193"
 export sefi_staking_vk="api_key_vQGLKACbvr3DEUdffavJFkhbr1LF6lH9yEmhxkeRXQo="
 
-export vote_duration=$((HOUR))
+export vote_duration=$((10 * MINUTE))
 export quorum=33
 export min_staked="1000000" # 1 SEFI
 
@@ -71,7 +72,7 @@ resp=$(secretcli tx compute store "${wasm_path}/secret_poll.wasm" --from "$deplo
 echo $resp
 vote_code_id=$(echo $resp | jq -r '.logs[0].events[0].attributes[] | select(.key == "code_id") | .value')
 vote_code_hash=$(secretcli q compute list-code | jq '.[] | select(.id == '"$vote_code_id"') | .data_hash')
-echo "Stored voting factory: '$vote_code_id', '$vote_code_hash'"
+echo "Stored voting contract: '$vote_code_id', '$vote_code_hash'"
 
 echo "Deploying Vote Factory.."
 export TX_HASH=$(
