@@ -12,19 +12,27 @@ pub fn query_pending<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<u128> {
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
 
-    let response = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-        callback_code_hash: config.master.contract_hash,
-        contract_addr: config.master.address,
-        msg: to_binary(&MasterQueryMsg::Pending {
-            spy_addr: config.own_addr,
-            block,
-        })?,
-    }))?;
+    let mut total_amount = 0;
+    for rs in config.reward_sources {
+        let response = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+            callback_code_hash: rs.contract_hash,
+            contract_addr: rs.address.clone(),
+            msg: to_binary(&MasterQueryMsg::Pending {
+                spy_addr: config.own_addr.clone(),
+                block,
+            })?,
+        }))?;
 
-    match response {
-        MasterQueryAnswer::Pending { amount } => Ok(amount.u128()),
-        _ => Err(StdError::generic_err(
-            "something is wrong with the master contract..",
-        )),
+        total_amount += match response {
+            MasterQueryAnswer::Pending { amount } => amount.u128(),
+            _ => {
+                return Err(StdError::generic_err(format!(
+                    "something is wrong with the reward source: {}",
+                    rs.address
+                )));
+            }
+        }
     }
+
+    Ok(total_amount)
 }

@@ -7,7 +7,7 @@ pub struct Config {
     pub admin: HumanAddr,
     pub reward_token: SecretContract,
     pub inc_token: SecretContract,
-    pub master: SecretContract,
+    pub reward_sources: Vec<SecretContract>,
     pub viewing_key: String,
     pub prng_seed: Vec<u8>,
     pub is_stopped: bool,
