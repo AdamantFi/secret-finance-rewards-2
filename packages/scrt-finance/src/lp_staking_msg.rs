@@ -118,6 +118,7 @@ pub enum LPStakingQueryMsg {
     IncentivizedToken {},
     TotalLocked {},
     Subscribers {},
+    RewardSources {},
 
     // Authenticated
     Rewards {
@@ -169,6 +170,9 @@ pub enum LPStakingQueryAnswer {
         amount: Uint128,
     },
     Subscribers {
+        contracts: Vec<SecretContract>,
+    },
+    RewardSources {
         contracts: Vec<SecretContract>,
     },
 

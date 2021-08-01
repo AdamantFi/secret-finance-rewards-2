@@ -158,6 +158,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         LPStakingQueryMsg::TokenInfo {} => query_token_info(deps),
         LPStakingQueryMsg::TotalLocked {} => query_total_locked(deps),
         LPStakingQueryMsg::Subscribers {} => query_subscribers(deps),
+        LPStakingQueryMsg::RewardSources {} => query_reward_sources(deps),
         _ => authenticated_queries(deps, msg),
     };
 
@@ -738,6 +739,16 @@ fn query_subscribers<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> 
     to_binary(&LPStakingQueryAnswer::Subscribers { contracts: subs })
 }
 
+fn query_reward_sources<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+) -> StdResult<Binary> {
+    let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+
+    to_binary(&LPStakingQueryAnswer::RewardSources {
+        contracts: config.reward_sources,
+    })
+}
+
 // Helper functions
 
 fn enforce_admin(config: &Config, env: Env) -> StdResult<()> {
@@ -803,6 +814,7 @@ fn update_allocation(env: Env, config: Config, hook: Option<Binary>) -> StdResul
         }
     }
 
+    // Push the hook message only for the last UpdateAllocation message
     if let Some(rs) = config.reward_sources.last() {
         messages.push(
             WasmMsg::Execute {
