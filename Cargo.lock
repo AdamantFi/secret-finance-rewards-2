@@ -122,6 +122,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bulk-distributor"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-std 0.10.0 (git+https://github.com/enigmampc/SecretNetwork?rev=004c6bc)",
+ "cosmwasm-storage",
+ "schemars",
+ "scrt-finance",
+ "secret-toolkit",
+ "serde",
+ "snafu",
+]
+
+[[package]]
 name = "byte-tools"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
