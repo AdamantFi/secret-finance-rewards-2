@@ -3,14 +3,13 @@ use cosmwasm_std::{
     StdError, StdResult, Storage, Uint128, WasmMsg,
 };
 
-use crate::msg::{HandleAnswer, HandleMsg, InitMsg, ResponseStatus};
+use crate::msg::{HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus};
 use crate::state::{
-    config, config_read, reward_bulks, reward_bulks_read, updated_reward_bulks, RewardBulk, State,
+    config, config_read, reward_bulks_read, updated_reward_bulks, RewardBulk, State,
 };
 use scrt_finance::lp_staking_msg::LPStakingHandleMsg;
-use scrt_finance::types::{sort_schedule, Schedule, SpySettings, WeightInfo};
+use scrt_finance::types::SecretContract;
 use secret_toolkit::snip20;
-use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -33,11 +32,15 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
     match msg {
-        HandleMsg::UpdateAllocation { .. } => {}
-        HandleMsg::Receive { .. } => {}
+        HandleMsg::UpdateAllocation { hook, .. } => update_allocation(deps, env, hook),
+        HandleMsg::Receive {
+            sender,
+            from,
+            amount,
+            msg,
+        } => unimplemented!(),
+        HandleMsg::ChangeAdmin { address } => change_admin(deps, env, address),
     }
-
-    unimplemented!()
 }
 
 fn update_allocation<S: Storage, A: Api, Q: Querier>(
@@ -51,7 +54,7 @@ fn update_allocation<S: Storage, A: Api, Q: Querier>(
     let mut messages = vec![];
 
     if state.last_awarded_block < env.block.height {
-        let mut reward_bulks = updated_reward_bulks(&mut deps.storage, &state)?;
+        let reward_bulks = updated_reward_bulks(&mut deps.storage, &state)?;
         rewards = get_spy_rewards(reward_bulks, state.last_awarded_block, env.block.height);
         messages.push(snip20::send_msg(
             state.spy_to_reward.address.clone(),
@@ -59,8 +62,8 @@ fn update_allocation<S: Storage, A: Api, Q: Querier>(
             None,
             None,
             1,
-            state.reward_token.contract_hash,
-            state.reward_token.address,
+            state.reward_token.contract_hash.clone(),
+            state.reward_token.address.clone(),
         )?);
 
         state.last_awarded_block = env.block.height;
@@ -89,26 +92,11 @@ fn update_allocation<S: Storage, A: Api, Q: Querier>(
     })
 }
 
-fn set_gov_token<S: Storage, A: Api, Q: Querier>(
+fn receive<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    gov_addr: HumanAddr,
-    gov_hash: String,
 ) -> StdResult<HandleResponse> {
-    let mut state = config_read(&deps.storage).load()?;
-
-    enforce_admin(state.clone(), env)?;
-
-    state.gov_token_addr = gov_addr.clone();
-    state.gov_token_hash = gov_hash;
-
-    config(&mut deps.storage).save(&state)?;
-
-    Ok(HandleResponse {
-        messages: vec![],
-        log: vec![log("set_gov_token", gov_addr.0)],
-        data: Some(to_binary(&MasterHandleAnswer::Success)?),
-    })
+    unimplemented!()
 }
 
 fn change_admin<S: Storage, A: Api, Q: Querier>(
@@ -127,95 +115,59 @@ fn change_admin<S: Storage, A: Api, Q: Querier>(
     Ok(HandleResponse {
         messages: vec![],
         log: vec![],
-        data: Some(to_binary(&MasterHandleAnswer::Success)?),
+        data: Some(to_binary(&HandleAnswer::ChangeAdmin {
+            status: ResponseStatus::Success,
+        })?),
     })
 }
 
 pub fn query<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
-    msg: MasterQueryMsg,
+    msg: QueryMsg,
 ) -> StdResult<Binary> {
     match msg {
-        MasterQueryMsg::Admin {} => to_binary(&query_admin(deps)?),
-        MasterQueryMsg::GovToken {} => to_binary(&query_gov_token(deps)?),
-        MasterQueryMsg::Schedule {} => to_binary(&query_schedule(deps)?),
-        MasterQueryMsg::SpyWeight { addr } => to_binary(&query_spy_weight(deps, addr)?),
-        MasterQueryMsg::Pending { spy_addr, block } => {
-            to_binary(&query_pending_rewards(deps, spy_addr, block)?)
-        }
+        QueryMsg::Admin {} => to_binary(&query_admin(deps)?),
+        QueryMsg::RewardToken {} => to_binary(&query_reward_token(deps)?),
+        QueryMsg::Pending { block } => to_binary(&query_pending_rewards(deps, block)?),
     }
 }
 
-fn query_admin<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>,
-) -> StdResult<MasterQueryAnswer> {
+fn query_admin<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<QueryAnswer> {
     let state = config_read(&deps.storage).load()?;
 
-    Ok(MasterQueryAnswer::Admin {
+    Ok(QueryAnswer::Admin {
         address: state.admin,
     })
 }
 
-fn query_gov_token<S: Storage, A: Api, Q: Querier>(
+fn query_reward_token<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
-) -> StdResult<MasterQueryAnswer> {
+) -> StdResult<QueryAnswer> {
     let state = config_read(&deps.storage).load()?;
 
-    Ok(MasterQueryAnswer::GovToken {
-        token_addr: state.gov_token_addr,
-        token_hash: state.gov_token_hash,
+    Ok(QueryAnswer::RewardToken {
+        contract: SecretContract {
+            address: state.reward_token.address,
+            contract_hash: state.reward_token.contract_hash,
+        },
     })
-}
-
-fn query_schedule<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>,
-) -> StdResult<MasterQueryAnswer> {
-    let state = config_read(&deps.storage).load()?;
-
-    Ok(MasterQueryAnswer::Schedule {
-        schedule: state.minting_schedule,
-    })
-}
-
-fn query_spy_weight<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>,
-    spy_address: HumanAddr,
-) -> StdResult<MasterQueryAnswer> {
-    let spy = TypedStore::attach(&deps.storage)
-        .load(spy_address.0.as_bytes())
-        .unwrap_or(SpySettings {
-            weight: 0,
-            last_update_block: 0,
-        });
-
-    Ok(MasterQueryAnswer::SpyWeight { weight: spy.weight })
 }
 
 fn query_pending_rewards<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
-    spy_addr: HumanAddr,
     block: u64,
-) -> StdResult<MasterQueryAnswer> {
+) -> StdResult<QueryAnswer> {
     let state = config_read(&deps.storage).load()?;
-    let spy = TypedStore::attach(&deps.storage)
-        .load(spy_addr.0.as_bytes())
-        .unwrap_or(SpySettings {
-            weight: 0,
-            last_update_block: block,
-        });
+    let bulks = reward_bulks_read(&deps.storage).load()?;
 
-    let amount = get_spy_rewards(block, state.total_weight, &state.minting_schedule, spy);
+    let amount = get_spy_rewards(bulks, state.last_awarded_block, block);
 
-    Ok(MasterQueryAnswer::Pending {
+    Ok(QueryAnswer::Pending {
         amount: Uint128(amount),
     })
 }
 
-fn get_spy_rewards<S: Storage, A: Api, Q: Querier>(
-    bulks: Vec<RewardBulk>,
-    last_awarded_block: u64,
-    current_block: u64,
-) -> u128 {
+fn get_spy_rewards(bulks: Vec<RewardBulk>, last_awarded_block: u64, current_block: u64) -> u128 {
     let mut amount = 0;
     for bulk in bulks {
         if current_block < bulk.end_block {

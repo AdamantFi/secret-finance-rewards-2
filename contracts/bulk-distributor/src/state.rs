@@ -3,8 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{HumanAddr, StdResult, Storage};
 use cosmwasm_storage::{singleton, singleton_read, ReadonlySingleton, Singleton};
-use scrt_finance::types::{Schedule, SecretContract};
-use secret_toolkit::storage::TypedStoreMut;
+use scrt_finance::types::SecretContract;
 
 pub static CONFIG_KEY: &[u8] = b"config";
 pub static REWARD_BULKS_KEY: &[u8] = b"rewardbulks";
@@ -45,12 +44,13 @@ pub fn updated_reward_bulks<S: Storage>(
     state: &State,
 ) -> StdResult<Vec<RewardBulk>> {
     let bulks = reward_bulks_read(storage).load()?;
+    let bulks_len = bulks.len();
     let updated_bulks: Vec<RewardBulk> = bulks
-        .iter()
+        .into_iter()
         .filter(|b| b.end_block > state.last_awarded_block)
         .collect();
 
-    if updated_bulks.len() != bulks.len() {
+    if updated_bulks.len() != bulks_len {
         reward_bulks(storage).save(&updated_bulks)?;
     }
 

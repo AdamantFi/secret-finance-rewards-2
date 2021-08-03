@@ -1,5 +1,7 @@
 use cosmwasm_std::{Binary, HumanAddr, Uint128};
+use schemars::JsonSchema;
 use scrt_finance::types::SecretContract;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InitMsg {
@@ -23,10 +25,18 @@ pub enum HandleMsg {
         amount: Uint128,
         msg: Binary,
     },
+
+    // Admin commands
+    ChangeAdmin {
+        address: HumanAddr,
+    },
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum HandleAnswer {
     UpdateAllocation { status: ResponseStatus },
+    ChangeAdmin { status: ResponseStatus },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -40,4 +50,20 @@ pub enum ReceiveMsg {
 pub enum ResponseStatus {
     Success,
     Failure,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryMsg {
+    Admin {},
+    RewardToken {},
+    Pending { block: u64 },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryAnswer {
+    Admin { address: HumanAddr },
+    RewardToken { contract: SecretContract },
+    Pending { amount: Uint128 },
 }
