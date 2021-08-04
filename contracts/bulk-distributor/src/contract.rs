@@ -1,11 +1,13 @@
 use cosmwasm_std::{
-    log, to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier,
-    StdError, StdResult, Storage, Uint128, WasmMsg,
+    from_binary, log, to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse,
+    Querier, StdError, StdResult, Storage, Uint128, WasmMsg,
 };
 
-use crate::msg::{HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus};
+use crate::msg::{
+    HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ReceiveMsg, ResponseStatus,
+};
 use crate::state::{
-    config, config_read, reward_bulks_read, updated_reward_bulks, RewardBulk, State,
+    config, config_read, reward_bulks, reward_bulks_read, updated_reward_bulks, RewardBulk, State,
 };
 use scrt_finance::lp_staking_msg::LPStakingHandleMsg;
 use scrt_finance::types::SecretContract;
@@ -34,11 +36,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     match msg {
         HandleMsg::UpdateAllocation { hook, .. } => update_allocation(deps, env, hook),
         HandleMsg::Receive {
-            sender,
-            from,
-            amount,
-            msg,
-        } => unimplemented!(),
+            from, amount, msg, ..
+        } => receive(deps, env, from, amount.u128(), msg),
         HandleMsg::ChangeAdmin { address } => change_admin(deps, env, address),
     }
 }
@@ -95,8 +94,17 @@ fn update_allocation<S: Storage, A: Api, Q: Querier>(
 fn receive<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
+    from: HumanAddr,
+    amount: u128,
+    msg: Binary,
 ) -> StdResult<HandleResponse> {
-    unimplemented!()
+    let msg: ReceiveMsg = from_binary(&msg)?;
+
+    match msg {
+        ReceiveMsg::NewBulkReward { distribute_over } => {
+            new_bulk_reward(deps, env, from, distribute_over, amount)
+        }
+    }
 }
 
 fn change_admin<S: Storage, A: Api, Q: Querier>(
@@ -119,6 +127,35 @@ fn change_admin<S: Storage, A: Api, Q: Querier>(
             status: ResponseStatus::Success,
         })?),
     })
+}
+
+fn new_bulk_reward<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    from: HumanAddr,
+    distribute_over: u64,
+    amount: u128,
+) -> StdResult<HandleResponse> {
+    // Only admin is allowed to create reward bulks, to protect from DOS attacks
+    let state = config_read(&deps.storage).load()?;
+    if from != state.admin {
+        return Err(StdError::unauthorized());
+    }
+
+    // Updates and notifies allocation to the reward contract. This should happen before the new
+    // bulk is added to the bulk list, to not mess up the rewards calculation
+    let update_allocation_resp = update_allocation(deps, env.clone(), None);
+
+    let new_bulk = RewardBulk {
+        end_block: env.block.height + distribute_over,
+        amount_per_block: amount / distribute_over as u128,
+    };
+
+    let mut bulks = reward_bulks_read(&deps.storage).load()?;
+    bulks.push(new_bulk);
+    reward_bulks(&mut deps.storage).save(&bulks)?;
+
+    update_allocation_resp
 }
 
 pub fn query<S: Storage, A: Api, Q: Querier>(
