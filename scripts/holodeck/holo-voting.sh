@@ -60,11 +60,11 @@ export min_staked="1000000" # 1 SEFI
 #wait_for_tx "$TX_HASH" "Waiting for tx to finish on-chain..."
 #secretcli q compute tx $TX_HASH
 
-echo "Storing vote factory"
-resp=$(secretcli tx compute store "${wasm_path}/poll_factory.wasm" --from "$deployer_name" --gas 3000000 -b block -y)
-echo $resp
-factory_code_id=$(echo $resp | jq -r '.logs[0].events[0].attributes[] | select(.key == "code_id") | .value')
-echo "Stored voting factory: '$factory_code_id'"
+#echo "Storing vote factory"
+#resp=$(secretcli tx compute store "${wasm_path}/poll_factory.wasm" --from "$deployer_name" --gas 3000000 -b block -y)
+#echo $resp
+#factory_code_id=$(echo $resp | jq -r '.logs[0].events[0].attributes[] | select(.key == "code_id") | .value')
+#echo "Stored voting factory: '$factory_code_id'"
 
 echo "Storing vote contract"
 resp=$(secretcli tx compute store "${wasm_path}/secret_poll.wasm" --from "$deployer_name" --gas 3000000 -b block -y)
@@ -73,38 +73,40 @@ vote_code_id=$(echo $resp | jq -r '.logs[0].events[0].attributes[] | select(.key
 vote_code_hash=$(secretcli q compute list-code | jq '.[] | select(.id == '"$vote_code_id"') | .data_hash')
 echo "Stored voting factory: '$vote_code_id', '$vote_code_hash'"
 
-echo "Deploying Vote Factory.."
-export TX_HASH=$(
-secretcli tx compute instantiate $factory_code_id '{"prng_seed":"YWE=","poll_contract":{"code_id":'"$vote_code_id"',"code_hash":'"$vote_code_hash"'},"staking_pool":{"address":"'"$sefi_staking_addr"'","contract_hash":"'"$sefi_staking_hash"'"},"default_poll_config":{"duration":'"$vote_duration"', "quorum":'"$quorum"', "min_threshold":0},"min_staked":"'"$min_staked"'", "reveal_com":{"n":1, "revealers":["secret1k89hg6e5fxkeya9x6vq6yxzs76zt7xkj943tav","secret1p0vgghl8rw4ukzm7geyy0f0tl29glxrtnlalue"]}}' --from $deployer_name --gas 1500000 --label vote_factory-$revision -b block -y |
-  jq -r .txhash
-)
-wait_for_tx "$TX_HASH" "Waiting for tx to finish on-chain..."
-secretcli q compute tx $TX_HASH
-vote_factory_addr=$(secretcli query compute list-contract-by-code $factory_code_id | jq -r '.[-1].address')
-vote_factory_code_hash=$(secretcli q compute list-code | jq '.[] | select(.id == '"$factory_code_id"') | .data_hash')
-echo "Vote Factory address: '$vote_factory_addr', '$vote_factory_code_hash'"
+#echo "Deploying Vote Factory.."
+#export TX_HASH=$(
+#secretcli tx compute instantiate $factory_code_id '{"prng_seed":"YWE=","poll_contract":{"code_id":'"$vote_code_id"',"code_hash":'"$vote_code_hash"'},"staking_pool":{"address":"'"$sefi_staking_addr"'","contract_hash":"'"$sefi_staking_hash"'"},"default_poll_config":{"duration":'"$vote_duration"', "quorum":'"$quorum"', "min_threshold":0},"min_staked":"'"$min_staked"'", "reveal_com":{"n":1, "revealers":["secret1k89hg6e5fxkeya9x6vq6yxzs76zt7xkj943tav","secret1p0vgghl8rw4ukzm7geyy0f0tl29glxrtnlalue"]}}' --from $deployer_name --gas 1500000 --label vote_factory-$revision -b block -y |
+#  jq -r .txhash
+#)
+#wait_for_tx "$TX_HASH" "Waiting for tx to finish on-chain..."
+#secretcli q compute tx $TX_HASH
+#vote_factory_addr=$(secretcli query compute list-contract-by-code $factory_code_id | jq -r '.[-1].address')
+#vote_factory_code_hash=$(secretcli q compute list-code | jq '.[] | select(.id == '"$factory_code_id"') | .data_hash')
+#echo "Vote Factory address: '$vote_factory_addr', '$vote_factory_code_hash'"
 
-echo "Adding vote factory as a subscriber.."
-export TX_HASH=$(
-  secretcli tx compute execute $sefi_staking_addr '{"add_subs":{"contracts":[{"address":"'"$vote_factory_addr"'","contract_hash":'"$vote_factory_code_hash"'}]}}' --from $deployer_name --gas 1500000 -b block -y |
-  jq -r .txhash
-)
-wait_for_tx "$TX_HASH" "Waiting for tx to finish on-chain..."
-export resp=$(secretcli q compute tx $TX_HASH)
-echo $resp
+#echo "Adding vote factory as a subscriber.."
+#export TX_HASH=$(
+#  secretcli tx compute execute $sefi_staking_addr '{"add_subs":{"contracts":[{"address":"'"$vote_factory_addr"'","contract_hash":'"$vote_factory_code_hash"'}]}}' --from $deployer_name --gas 1500000 -b block -y |
+#  jq -r .txhash
+#)
+#wait_for_tx "$TX_HASH" "Waiting for tx to finish on-chain..."
+#export resp=$(secretcli q compute tx $TX_HASH)
+#echo $resp
 
-echo "Deploying a vote.."
-export TX_HASH=$(
-  secretcli tx compute execute $vote_factory_addr '{"new_poll":{"poll_metadata":{"title":"demo vote", "description":"this is a demo vote woohoooooooo!!!", "vote_type":"SEFI Community Spending", "author_addr":"'"$deployer_address"'", "author_alias":"you know who it is"},"poll_choices":["Yes","No"],"pool_viewing_key":"'"$sefi_staking_vk"'"}}' --from $deployer_name --gas 1500000 -b block -y |
-  jq -r .txhash
-)
-wait_for_tx "$TX_HASH" "Waiting for tx to finish on-chain..."
-export resp=$(secretcli q compute tx $TX_HASH)
-echo $resp
-vote_contract_addr=$(echo $resp | jq -r '.output_log[0].attributes[] | select(.key == "new_poll") | .value')
-echo "Vote contract address: '$vote_contract_addr'"
+#echo "Deploying a vote.."
+#export TX_HASH=$(
+#  secretcli tx compute execute $vote_factory_addr '{"new_poll":{"poll_metadata":{"title":"demo vote", "description":"this is a demo vote woohoooooooo!!!", "vote_type":"SEFI Community Spending", "author_addr":"'"$deployer_address"'", "author_alias":"you know who it is"},"poll_choices":["Yes","No"],"pool_viewing_key":"'"$sefi_staking_vk"'"}}' --from $deployer_name --gas 1500000 -b block -y |
+#  jq -r .txhash
+#)
+#wait_for_tx "$TX_HASH" "Waiting for tx to finish on-chain..."
+#export resp=$(secretcli q compute tx $TX_HASH)
+#echo $resp
+#vote_contract_addr=$(echo $resp | jq -r '.output_log[0].attributes[] | select(.key == "new_poll") | .value')
+#echo "Vote contract address: '$vote_contract_addr'"
 
 echo ""
 echo "SEFI Staking address: '$sefi_staking_addr'"
 echo "Voting Factory address: '$vote_factory_addr'"
 echo "Vote contract address: '$vote_contract_addr'"
+echo "Vote contract id: '$vote_code_id'"
+

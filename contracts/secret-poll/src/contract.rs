@@ -241,6 +241,10 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::unauthorized());
     }
 
+    if reveal_conf.revealed.contains(&env.message.sender) {
+        return Err(StdError::generic_err("already finalized the vote"));
+    }
+
     reveal_conf.revealed.push(env.message.sender);
     reveal_conf.num_revealed += 1;
     reveal_conf_store.store(REVEAL_CONFIG, &reveal_conf)?;
