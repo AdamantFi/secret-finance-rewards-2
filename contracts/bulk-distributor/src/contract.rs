@@ -25,6 +25,8 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         last_awarded_block: 0,
     })?;
 
+    reward_bulks(&mut deps.storage).save(&vec![])?;
+
     Ok(InitResponse::default())
 }
 
@@ -55,15 +57,17 @@ fn update_allocation<S: Storage, A: Api, Q: Querier>(
     if state.last_awarded_block < env.block.height {
         let reward_bulks = updated_reward_bulks(&mut deps.storage, &state)?;
         rewards = get_spy_rewards(reward_bulks, state.last_awarded_block, env.block.height);
-        messages.push(snip20::send_msg(
-            state.spy_to_reward.address.clone(),
-            Uint128(rewards),
-            None,
-            None,
-            1,
-            state.reward_token.contract_hash.clone(),
-            state.reward_token.address.clone(),
-        )?);
+        if rewards > 0 {
+            messages.push(snip20::send_msg(
+                state.spy_to_reward.address.clone(),
+                Uint128(rewards),
+                None,
+                None,
+                1,
+                state.reward_token.contract_hash.clone(),
+                state.reward_token.address.clone(),
+            )?);
+        }
 
         state.last_awarded_block = env.block.height;
         config(&mut deps.storage).save(&state)?;
