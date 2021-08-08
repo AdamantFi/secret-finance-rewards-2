@@ -26,7 +26,7 @@ _compile-w-debug-print:
 compile-optimized-reproducible:
 	for path in $$(ls contracts); do \
 		make -C "contracts/$$path" compile-optimized-reproducible; \
-		mv -f "contracts/$$path/contract.wasm.gz" "$$(basename $${path}).wasm.gz"; \
+		mv -f "contracts/$$path/contract.wasm.gz" "build/$$(basename $${path}).wasm.gz"; \
     done
 
 .PHONY: start-server
