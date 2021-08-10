@@ -7,11 +7,12 @@ use crate::msg::{
     HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ReceiveMsg, ResponseStatus,
 };
 use crate::state::{
-    config, config_read, reward_bulks, reward_bulks_read, updated_reward_bulks, RewardBulk, State,
+    config, config_read, updated_reward_bulks, RewardBulk, State, REWARD_BULKS_KEY,
 };
 use scrt_finance::lp_staking_msg::LPStakingHandleMsg;
 use scrt_finance::types::SecretContract;
 use secret_toolkit::snip20;
+use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -20,14 +21,24 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<InitResponse> {
     config(&mut deps.storage).save(&State {
         admin: env.message.sender,
-        reward_token: msg.reward_token,
+        reward_token: msg.reward_token.clone(),
         spy_to_reward: msg.spy_to_reward,
         last_awarded_block: 0,
     })?;
 
-    reward_bulks(&mut deps.storage).save(&vec![])?;
+    TypedStoreMut::<Vec<RewardBulk>, S>::attach(&mut deps.storage)
+        .store(REWARD_BULKS_KEY, &vec![])?;
 
-    Ok(InitResponse::default())
+    Ok(InitResponse {
+        messages: vec![snip20::register_receive_msg(
+            env.contract_code_hash,
+            None,
+            1, // This is public data, no need to pad
+            msg.reward_token.contract_hash,
+            msg.reward_token.address,
+        )?],
+        log: vec![],
+    })
 }
 
 pub fn handle<S: Storage, A: Api, Q: Querier>(
@@ -58,10 +69,9 @@ fn update_allocation<S: Storage, A: Api, Q: Querier>(
         let reward_bulks = updated_reward_bulks(&mut deps.storage, &state)?;
         rewards = get_spy_rewards(reward_bulks, state.last_awarded_block, env.block.height);
         if rewards > 0 {
-            messages.push(snip20::send_msg(
+            messages.push(snip20::transfer_msg(
                 state.spy_to_reward.address.clone(),
                 Uint128(rewards),
-                None,
                 None,
                 1,
                 state.reward_token.contract_hash.clone(),
@@ -155,9 +165,9 @@ fn new_bulk_reward<S: Storage, A: Api, Q: Querier>(
         amount_per_block: amount / distribute_over as u128,
     };
 
-    let mut bulks = reward_bulks_read(&deps.storage).load()?;
+    let mut bulks: Vec<RewardBulk> = TypedStore::attach(&deps.storage).load(REWARD_BULKS_KEY)?;
     bulks.push(new_bulk);
-    reward_bulks(&mut deps.storage).save(&bulks)?;
+    TypedStoreMut::attach(&mut deps.storage).store(REWARD_BULKS_KEY, &bulks)?;
 
     update_allocation_resp
 }
@@ -199,7 +209,7 @@ fn query_pending_rewards<S: Storage, A: Api, Q: Querier>(
     block: u64,
 ) -> StdResult<QueryAnswer> {
     let state = config_read(&deps.storage).load()?;
-    let bulks = reward_bulks_read(&deps.storage).load()?;
+    let bulks: Vec<RewardBulk> = TypedStore::attach(&deps.storage).load(REWARD_BULKS_KEY)?;
 
     let amount = get_spy_rewards(bulks, state.last_awarded_block, block);
 
@@ -213,7 +223,7 @@ fn get_spy_rewards(bulks: Vec<RewardBulk>, last_awarded_block: u64, current_bloc
     for bulk in bulks {
         if current_block < bulk.end_block {
             amount += (current_block - last_awarded_block) as u128 * bulk.amount_per_block;
-        } else {
+        } else if last_awarded_block < bulk.end_block {
             amount += (bulk.end_block - last_awarded_block) as u128 * bulk.amount_per_block;
         }
     }
