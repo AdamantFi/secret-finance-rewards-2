@@ -179,6 +179,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     match msg {
         QueryMsg::Admin {} => to_binary(&query_admin(deps)?),
         QueryMsg::RewardToken {} => to_binary(&query_reward_token(deps)?),
+        QueryMsg::Spy {} => to_binary(&query_spy(deps)?),
         QueryMsg::Pending { block } => to_binary(&query_pending_rewards(deps, block)?),
     }
 }
@@ -200,6 +201,17 @@ fn query_reward_token<S: Storage, A: Api, Q: Querier>(
         contract: SecretContract {
             address: state.reward_token.address,
             contract_hash: state.reward_token.contract_hash,
+        },
+    })
+}
+
+fn query_spy<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<QueryAnswer> {
+    let state = config_read(&deps.storage).load()?;
+
+    Ok(QueryAnswer::Spy {
+        contract: SecretContract {
+            address: state.spy_to_reward.address,
+            contract_hash: state.spy_to_reward.contract_hash,
         },
     })
 }

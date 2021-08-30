@@ -57,6 +57,7 @@ pub enum ResponseStatus {
 pub enum QueryMsg {
     Admin {},
     RewardToken {},
+    Spy {},
     Pending { block: u64 },
 }
 
@@ -65,5 +66,6 @@ pub enum QueryMsg {
 pub enum QueryAnswer {
     Admin { address: HumanAddr },
     RewardToken { contract: SecretContract },
+    Spy { contract: SecretContract },
     Pending { amount: Uint128 },
 }

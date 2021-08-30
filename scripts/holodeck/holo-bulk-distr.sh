@@ -10,18 +10,19 @@ function wait_for_tx() {
 
 export wasm_path=build
 
-export revision="11"
+export revision="12"
 export deployer_name=test
 export viewing_key="123"
 export gov_addr="secret12q2c5s5we5zn9pq43l0rlsygtql6646my0sqfm"
 export token_code_hash="c7fe67b243dfedc625a28ada303434d6f5a46a3086e7d2b5063a814e9f9a379d"
 export master_addr="secret13hqxweum28nj0c53nnvrpd23ygguhteqggf852"
 export master_code_hash="c8555c2de49967ca484ba21cf563c2b27227a39ad6f32ff3de9758f20159d2d2"
-export inc_token="secret1gh6f0gxn20ckjxhwgkq3xeve3aq4l53wkyfyen"
-export inc_token_hash="ea3df9d5e17246e4ef2f2e8071c91299852a07a84c4eb85007476338b7547ce8"
+export inc_token="secret1847naf7ral278nqmj7gsvcv28zqfyeprd2al6v"
+export inc_token_hash="2da545ebc441be05c9fa6338f3353f35ac02ec4b02454bc49b1a66f4b9866aed"
+#export inc_token="secret1gh6f0gxn20ckjxhwgkq3xeve3aq4l53wkyfyen"
+#export inc_token_hash="ea3df9d5e17246e4ef2f2e8071c91299852a07a84c4eb85007476338b7547ce8"
 #export staking_addr="secret1uk6cmegnfvc7q0wa20ex7fpx76hgsy9guma4t9"
 #export staking_hash='"c2c1aabec6308b1639af67e075175f7ac4080c7dddd9ba52ea26851f5b85b2c7"'
-
 
 echo "Storing Staking Contract"
 resp=$(secretcli tx compute store "${wasm_path}/lp_staking.wasm" --from "$deployer_name" --gas 3000000 -b block -y)
