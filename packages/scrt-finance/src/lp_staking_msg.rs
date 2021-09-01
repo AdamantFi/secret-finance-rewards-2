@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub struct LPStakingInitMsg {
     pub reward_token: SecretContract,
     pub inc_token: SecretContract,
-    pub master: SecretContract,
+    pub reward_sources: Vec<SecretContract>,
     pub viewing_key: String,
     pub token_info: TokenInfo,
     pub prng_seed: Binary,
@@ -51,6 +51,12 @@ pub enum LPStakingHandleMsg {
     RemoveSubs {
         contracts: Vec<HumanAddr>,
     },
+    AddRewardSources {
+        contracts: Vec<SecretContract>,
+    },
+    RemoveRewardSources {
+        contracts: Vec<HumanAddr>,
+    },
 
     // Master callbacks
     NotifyAllocation {
@@ -73,6 +79,8 @@ pub enum LPStakingHandleAnswer {
     EmergencyRedeem { status: LPStakingResponseStatus },
     AddSubs { status: LPStakingResponseStatus },
     RemoveSubs { status: LPStakingResponseStatus },
+    AddRewardSources { status: LPStakingResponseStatus },
+    RemoveRewardSources { status: LPStakingResponseStatus },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -110,6 +118,7 @@ pub enum LPStakingQueryMsg {
     IncentivizedToken {},
     TotalLocked {},
     Subscribers {},
+    RewardSources {},
 
     // Authenticated
     Rewards {
@@ -161,6 +170,9 @@ pub enum LPStakingQueryAnswer {
         amount: Uint128,
     },
     Subscribers {
+        contracts: Vec<SecretContract>,
+    },
+    RewardSources {
         contracts: Vec<SecretContract>,
     },
 

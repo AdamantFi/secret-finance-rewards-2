@@ -1,7 +1,6 @@
 use cosmwasm_std::{
-    debug_print, from_binary, to_binary, Api, Binary, CosmosMsg, Env, Extern, HandleResponse,
-    HumanAddr, InitResponse, Querier, ReadonlyStorage, StdError, StdResult, Storage, Uint128,
-    WasmMsg,
+    from_binary, to_binary, Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAddr,
+    InitResponse, Querier, ReadonlyStorage, StdError, StdResult, Storage, Uint128, WasmMsg,
 };
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
 use secret_toolkit::crypto::sha_256;
@@ -36,7 +35,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
             admin: env.message.sender.clone(),
             reward_token: msg.reward_token.clone(),
             inc_token: msg.inc_token.clone(),
-            master: msg.master,
+            reward_sources: msg.reward_sources,
             viewing_key: msg.viewing_key.clone(),
             prng_seed: prng_seed_hashed.to_vec(),
             is_stopped: false,
@@ -136,6 +135,12 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         ),
         LPStakingHandleMsg::AddSubs { contracts } => add_subscribers(deps, env, contracts),
         LPStakingHandleMsg::RemoveSubs { contracts } => remove_subscribers(deps, env, contracts),
+        LPStakingHandleMsg::AddRewardSources { contracts } => {
+            add_reward_sources(deps, env, contracts)
+        }
+        LPStakingHandleMsg::RemoveRewardSources { contracts } => {
+            remove_reward_sources(deps, env, contracts)
+        }
         _ => Err(StdError::generic_err("Unavailable or unknown action")),
     };
 
@@ -153,6 +158,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         LPStakingQueryMsg::TokenInfo {} => query_token_info(deps),
         LPStakingQueryMsg::TotalLocked {} => query_total_locked(deps),
         LPStakingQueryMsg::Subscribers {} => query_subscribers(deps),
+        LPStakingQueryMsg::RewardSources {} => query_reward_sources(deps),
         _ => authenticated_queries(deps, msg),
     };
 
@@ -210,13 +216,18 @@ fn notify_allocation<S: Storage, A: Api, Q: Querier>(
     hook: Option<LPStakingHookMsg>,
 ) -> StdResult<HandleResponse> {
     let config = TypedStore::<Config, S>::attach(&deps.storage).load(CONFIG_KEY)?;
-    if env.message.sender != config.master.address && env.message.sender != config.admin {
+    if config
+        .reward_sources
+        .iter()
+        .all(|s| s.address != env.message.sender)
+        && env.message.sender != config.admin
+    {
         return Err(StdError::generic_err(
             "you are not allowed to call this function",
         ));
     }
 
-    let reward_pool = update_rewards(deps, /*&env, &config,*/ amount)?;
+    let reward_pool = update_rewards(deps, amount)?;
 
     let mut response = Ok(HandleResponse {
         messages: vec![],
@@ -443,7 +454,7 @@ fn stop_contract<S: Storage, A: Api, Q: Querier>(
     let mut config_store = TypedStoreMut::attach(&mut deps.storage);
     let mut config: Config = config_store.load(CONFIG_KEY)?;
 
-    enforce_admin(config.clone(), env)?;
+    enforce_admin(&config, env)?;
 
     config.is_stopped = true;
     config_store.store(CONFIG_KEY, &config)?;
@@ -464,7 +475,7 @@ fn resume_contract<S: Storage, A: Api, Q: Querier>(
     let mut config_store = TypedStoreMut::attach(&mut deps.storage);
     let mut config: Config = config_store.load(CONFIG_KEY)?;
 
-    enforce_admin(config.clone(), env)?;
+    enforce_admin(&config, env)?;
 
     config.is_stopped = false;
     config_store.store(CONFIG_KEY, &config)?;
@@ -486,7 +497,7 @@ fn change_admin<S: Storage, A: Api, Q: Querier>(
     let mut config_store = TypedStoreMut::attach(&mut deps.storage);
     let mut config: Config = config_store.load(CONFIG_KEY)?;
 
-    enforce_admin(config.clone(), env)?;
+    enforce_admin(&config, env)?;
 
     config.admin = address;
     config_store.store(CONFIG_KEY, &config)?;
@@ -545,7 +556,7 @@ fn add_subscribers<S: Storage, A: Api, Q: Querier>(
     new_subs: Vec<SecretContract>,
 ) -> StdResult<HandleResponse> {
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-    enforce_admin(config, env)?;
+    enforce_admin(&config, env)?;
 
     let mut subs_store = TypedStoreMut::attach(&mut deps.storage);
     let mut subs: Vec<SecretContract> = subs_store.load(SUBSCRIBERS_KEY)?;
@@ -567,12 +578,11 @@ fn remove_subscribers<S: Storage, A: Api, Q: Querier>(
     subs_to_remove: Vec<HumanAddr>,
 ) -> StdResult<HandleResponse> {
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-    enforce_admin(config, env)?;
+    enforce_admin(&config, env)?;
 
     let mut subs_store = TypedStoreMut::attach(&mut deps.storage);
     let mut subs: Vec<SecretContract> = subs_store.load(SUBSCRIBERS_KEY)?;
 
-    // TODO is there a better way to do this?
     subs = subs
         .into_iter()
         .filter(|s| !subs_to_remove.contains(&s.address))
@@ -584,6 +594,53 @@ fn remove_subscribers<S: Storage, A: Api, Q: Querier>(
         messages: vec![],
         log: vec![],
         data: Some(to_binary(&LPStakingHandleAnswer::RemoveSubs {
+            status: Success,
+        })?),
+    })
+}
+
+fn add_reward_sources<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    new_sources: Vec<SecretContract>,
+) -> StdResult<HandleResponse> {
+    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
+    let mut config: Config = config_store.load(CONFIG_KEY)?;
+    enforce_admin(&config, env)?;
+
+    config.reward_sources.extend(new_sources);
+    config_store.store(CONFIG_KEY, &config)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&LPStakingHandleAnswer::AddRewardSources {
+            status: Success,
+        })?),
+    })
+}
+
+fn remove_reward_sources<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    sources_to_remove: Vec<HumanAddr>,
+) -> StdResult<HandleResponse> {
+    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
+    let mut config: Config = config_store.load(CONFIG_KEY)?;
+    enforce_admin(&config, env)?;
+
+    config.reward_sources = config
+        .reward_sources
+        .into_iter()
+        .filter(|s| !sources_to_remove.contains(&s.address))
+        .collect();
+
+    config_store.store(CONFIG_KEY, &config)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&LPStakingHandleAnswer::RemoveRewardSources {
             status: Success,
         })?),
     })
@@ -682,9 +739,19 @@ fn query_subscribers<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> 
     to_binary(&LPStakingQueryAnswer::Subscribers { contracts: subs })
 }
 
+fn query_reward_sources<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+) -> StdResult<Binary> {
+    let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+
+    to_binary(&LPStakingQueryAnswer::RewardSources {
+        contracts: config.reward_sources,
+    })
+}
+
 // Helper functions
 
-fn enforce_admin(config: Config, env: Env) -> StdResult<()> {
+fn enforce_admin(config: &Config, env: Env) -> StdResult<()> {
     if config.admin != env.message.sender {
         return Err(StdError::generic_err(format!(
             "not an admin: {}",
@@ -723,18 +790,49 @@ fn update_rewards<S: Storage, A: Api, Q: Querier>(
 }
 
 fn update_allocation(env: Env, config: Config, hook: Option<Binary>) -> StdResult<HandleResponse> {
-    Ok(HandleResponse {
-        messages: vec![WasmMsg::Execute {
-            contract_addr: config.master.address,
-            callback_code_hash: config.master.contract_hash,
-            msg: to_binary(&MasterHandleMsg::UpdateAllocation {
-                spy_addr: env.contract.address,
-                spy_hash: env.contract_code_hash,
-                hook,
-            })?,
-            send: vec![],
+    let mut messages = vec![];
+
+    if config.reward_sources.len() > 1 {
+        for rs in config
+            .reward_sources
+            .iter()
+            .take(config.reward_sources.len() - 1)
+        {
+            messages.push(
+                WasmMsg::Execute {
+                    contract_addr: rs.address.clone(),
+                    callback_code_hash: rs.contract_hash.clone(),
+                    msg: to_binary(&MasterHandleMsg::UpdateAllocation {
+                        spy_addr: env.contract.address.clone(),
+                        spy_hash: env.contract_code_hash.clone(),
+                        hook: None,
+                    })?,
+                    send: vec![],
+                }
+                .into(),
+            );
         }
-        .into()],
+    }
+
+    // Push the hook message only for the last UpdateAllocation message
+    if let Some(rs) = config.reward_sources.last() {
+        messages.push(
+            WasmMsg::Execute {
+                contract_addr: rs.address.clone(),
+                callback_code_hash: rs.contract_hash.clone(),
+                msg: to_binary(&MasterHandleMsg::UpdateAllocation {
+                    spy_addr: env.contract.address,
+                    spy_hash: env.contract_code_hash,
+                    hook,
+                })?,
+                send: vec![],
+            }
+            .into(),
+        );
+    }
+
+    Ok(HandleResponse {
+        messages,
         log: vec![],
         data: None,
     })
@@ -796,10 +894,10 @@ mod tests {
                 address: HumanAddr("inc_t".to_string()),
                 contract_hash: "".to_string(),
             },
-            master: SecretContract {
+            reward_sources: vec![SecretContract {
                 address: HumanAddr("master".to_string()),
                 contract_hash: "".to_string(),
-            },
+            }],
             viewing_key: "123".to_string(),
             token_info: TokenInfo {
                 name: "".to_string(),
