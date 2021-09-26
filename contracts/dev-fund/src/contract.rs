@@ -279,17 +279,29 @@ fn enforce_admin(config: &Config, env: &Env) -> StdResult<()> {
 
 fn update_allocation(env: Env, config: Config, hook: Option<Binary>) -> StdResult<HandleResponse> {
     Ok(HandleResponse {
-        messages: vec![WasmMsg::Execute {
-            contract_addr: config.master.address,
-            callback_code_hash: config.master.contract_hash,
-            msg: to_binary(&MasterHandleMsg::UpdateAllocation {
-                spy_addr: env.contract.address,
-                spy_hash: env.contract_code_hash,
-                hook,
-            })?,
-            send: vec![],
-        }
-        .into()],
+        messages: vec![
+            WasmMsg::Execute {
+                contract_addr: config.master.address.clone(),
+                callback_code_hash: config.master.contract_hash.clone(),
+                msg: to_binary(&MasterHandleMsg::UpdateAllocation {
+                    spy_addr: env.contract.address.clone(),
+                    spy_hash: env.contract_code_hash.clone(),
+                })?,
+                send: vec![],
+            }
+            .into(),
+            // Last message will be a self-callback to execute the original deposit/redeem
+            WasmMsg::Execute {
+                contract_addr: env.contract.address,
+                callback_code_hash: env.contract_code_hash,
+                msg: to_binary(&HandleMsg::NotifyAllocation {
+                    amount: Uint128(0),
+                    hook,
+                })?,
+                send: vec![],
+            }
+            .into(),
+        ],
         log: vec![],
         data: None,
     })

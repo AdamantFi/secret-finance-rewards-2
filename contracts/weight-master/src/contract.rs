@@ -39,11 +39,9 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     msg: MasterHandleMsg,
 ) -> StdResult<HandleResponse> {
     match msg {
-        MasterHandleMsg::UpdateAllocation {
-            spy_addr,
-            spy_hash,
-            hook,
-        } => update_allocation(deps, env, spy_addr, spy_hash, hook),
+        MasterHandleMsg::UpdateAllocation { spy_addr, spy_hash } => {
+            update_allocation(deps, env, spy_addr, spy_hash)
+        }
         MasterHandleMsg::SetWeights { weights } => set_weights(deps, env, weights),
         MasterHandleMsg::SetSchedule { schedule } => set_schedule(deps, env, schedule),
         MasterHandleMsg::SetGovToken { addr, hash } => set_gov_token(deps, env, addr, hash),
@@ -162,7 +160,6 @@ fn update_allocation<S: Storage, A: Api, Q: Querier>(
     env: Env,
     spy_address: HumanAddr,
     spy_hash: String,
-    hook: Option<Binary>,
 ) -> StdResult<HandleResponse> {
     let state = config_read(&deps.storage).load()?;
 
@@ -202,7 +199,7 @@ fn update_allocation<S: Storage, A: Api, Q: Querier>(
             callback_code_hash: spy_hash,
             msg: to_binary(&LPStakingHandleMsg::NotifyAllocation {
                 amount: Uint128(rewards),
-                hook,
+                hook: None,
             })?,
             send: vec![],
         }

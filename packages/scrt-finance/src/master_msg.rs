@@ -16,7 +16,6 @@ pub enum MasterHandleMsg {
     UpdateAllocation {
         spy_addr: HumanAddr,
         spy_hash: String,
-        hook: Option<Binary>,
     },
 
     // Admin commands

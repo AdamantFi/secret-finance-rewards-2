@@ -221,6 +221,7 @@ fn notify_allocation<S: Storage, A: Api, Q: Querier>(
         .iter()
         .all(|s| s.address != env.message.sender)
         && env.message.sender != config.admin
+        && env.message.sender != env.contract.address
     {
         return Err(StdError::generic_err(
             "you are not allowed to call this function",
@@ -793,11 +794,7 @@ fn update_allocation(env: Env, config: Config, hook: Option<Binary>) -> StdResul
     let mut messages = vec![];
 
     if config.reward_sources.len() > 1 {
-        for rs in config
-            .reward_sources
-            .iter()
-            .take(config.reward_sources.len() - 1)
-        {
+        for rs in config.reward_sources.iter() {
             messages.push(
                 WasmMsg::Execute {
                     contract_addr: rs.address.clone(),
@@ -805,7 +802,6 @@ fn update_allocation(env: Env, config: Config, hook: Option<Binary>) -> StdResul
                     msg: to_binary(&MasterHandleMsg::UpdateAllocation {
                         spy_addr: env.contract.address.clone(),
                         spy_hash: env.contract_code_hash.clone(),
-                        hook: None,
                     })?,
                     send: vec![],
                 }
@@ -814,22 +810,19 @@ fn update_allocation(env: Env, config: Config, hook: Option<Binary>) -> StdResul
         }
     }
 
-    // Push the hook message only for the last UpdateAllocation message
-    if let Some(rs) = config.reward_sources.last() {
-        messages.push(
-            WasmMsg::Execute {
-                contract_addr: rs.address.clone(),
-                callback_code_hash: rs.contract_hash.clone(),
-                msg: to_binary(&MasterHandleMsg::UpdateAllocation {
-                    spy_addr: env.contract.address,
-                    spy_hash: env.contract_code_hash,
-                    hook,
-                })?,
-                send: vec![],
-            }
-            .into(),
-        );
-    }
+    // Last message will be a self-callback to execute the original deposit/redeem
+    messages.push(
+        WasmMsg::Execute {
+            contract_addr: env.contract.address,
+            callback_code_hash: env.contract_code_hash,
+            msg: to_binary(&LPStakingHandleMsg::NotifyAllocation {
+                amount: Uint128(0),
+                hook,
+            })?,
+            send: vec![],
+        }
+        .into(),
+    );
 
     Ok(HandleResponse {
         messages,
