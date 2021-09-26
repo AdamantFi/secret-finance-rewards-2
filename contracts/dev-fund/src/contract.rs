@@ -281,8 +281,8 @@ fn update_allocation(env: Env, config: Config, hook: Option<Binary>) -> StdResul
     Ok(HandleResponse {
         messages: vec![
             WasmMsg::Execute {
-                contract_addr: config.master.address.clone(),
-                callback_code_hash: config.master.contract_hash.clone(),
+                contract_addr: config.master.address,
+                callback_code_hash: config.master.contract_hash,
                 msg: to_binary(&MasterHandleMsg::UpdateAllocation {
                     spy_addr: env.contract.address.clone(),
                     spy_hash: env.contract_code_hash.clone(),
