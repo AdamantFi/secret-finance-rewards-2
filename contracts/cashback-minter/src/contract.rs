@@ -67,6 +67,7 @@ fn receive_swap_data<S: Storage, A: Api, Q: Querier>(
     asset_out: Asset,
     account: HumanAddr,
 ) -> StdResult<HandleResponse> {
+    // Authorization for this function is inside `get_eligibility()`
     let amount = get_eligibility(deps, env, asset_in, asset_out)?;
 
     let mut messages = vec![];
@@ -146,7 +147,7 @@ fn get_eligibility<S: Storage, A: Api, Q: Querier>(
     asset_out: Asset,
 ) -> StdResult<u128> {
     let is_stored = PrefixedStorage::new(PREFIX_PAIRED_TOKENS, &mut deps.storage)
-        .get(env.message.sender.0.as_bytes());
+        .get(env.message.sender.0.as_bytes()); // This is also acts as an authorization process - only the pair contracts can be the senders
     if is_stored.is_none() {
         // If stored => eligible
         return Ok(0);

@@ -802,21 +802,19 @@ fn update_allocation(
 ) -> StdResult<HandleResponse> {
     let mut messages = vec![];
 
-    if config.reward_sources.len() > 1 {
-        for rs in config.reward_sources.iter() {
-            messages.push(
-                WasmMsg::Execute {
-                    contract_addr: rs.address.clone(),
-                    callback_code_hash: rs.contract_hash.clone(),
-                    msg: to_binary(&MasterHandleMsg::UpdateAllocation {
-                        spy_addr: env.contract.address.clone(),
-                        spy_hash: env.contract_code_hash.clone(),
-                    })?,
-                    send: vec![],
-                }
-                .into(),
-            );
-        }
+    for rs in config.reward_sources.iter() {
+        messages.push(
+            WasmMsg::Execute {
+                contract_addr: rs.address.clone(),
+                callback_code_hash: rs.contract_hash.clone(),
+                msg: to_binary(&MasterHandleMsg::UpdateAllocation {
+                    spy_addr: env.contract.address.clone(),
+                    spy_hash: env.contract_code_hash.clone(),
+                })?,
+                send: vec![],
+            }
+            .into(),
+        );
     }
 
     if let Some(cb) = self_callback {
