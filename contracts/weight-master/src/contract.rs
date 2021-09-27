@@ -122,7 +122,6 @@ fn set_weights<S: Storage, A: Api, Q: Querier>(
                     callback_code_hash: to_update.hash,
                     msg: to_binary(&LPStakingHandleMsg::NotifyAllocation {
                         amount: Uint128(rewards),
-                        hook: None,
                     })?,
                     send: vec![],
                 }
@@ -199,7 +198,6 @@ fn update_allocation<S: Storage, A: Api, Q: Querier>(
             callback_code_hash: spy_hash,
             msg: to_binary(&LPStakingHandleMsg::NotifyAllocation {
                 amount: Uint128(rewards),
-                hook: None,
             })?,
             send: vec![],
         }

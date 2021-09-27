@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    from_binary, to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse,
-    Querier, StdError, StdResult, Storage, Uint128, WasmMsg,
+    to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier,
+    StdError, StdResult, Storage, Uint128, WasmMsg,
 };
 use secret_toolkit::snip20;
 use secret_toolkit::storage::{TypedStore, TypedStoreMut};
@@ -12,6 +12,7 @@ use crate::msg::{HandleAnswer, HandleMsg, HookMsg, InitMsg, QueryAnswer, QueryMs
 use crate::querier::query_pending;
 use crate::state::Config;
 use scrt_finance::master_msg::MasterHandleMsg;
+use scrt_finance::types::SecretContract;
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -55,13 +56,10 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::Redeem { amount, to } => redeem(deps, env, amount, to),
         HandleMsg::ChangeAdmin { address } => change_admin(deps, env, address),
         HandleMsg::ChangeBeneficiary { address } => change_beneficiary(deps, env, address),
-        HandleMsg::NotifyAllocation { amount, hook } => notify_allocation(
-            deps,
-            env,
-            amount.u128(),
-            hook.map(|h| from_binary(&h)).transpose()?,
-        ),
+        HandleMsg::NotifyAllocation { amount } => notify_allocation(deps, env, amount.u128()),
         HandleMsg::RefreshBalance {} => refresh_balance(deps, env),
+        HandleMsg::SelfCallback { message } => self_callback(deps, env, message),
+        HandleMsg::SetMaster { contract } => set_master(deps, env, contract),
     };
 
     pad_handle_result(response, RESPONSE_BLOCK_SIZE)
@@ -87,7 +85,6 @@ fn notify_allocation<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     amount: u128,
-    hook: Option<HookMsg>,
 ) -> StdResult<HandleResponse> {
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
     if env.message.sender != config.master.address && env.message.sender != config.admin {
@@ -97,35 +94,56 @@ fn notify_allocation<S: Storage, A: Api, Q: Querier>(
     let mut balance_store = TypedStoreMut::attach(&mut deps.storage);
     let mut balance: u128 = balance_store.load(ACCUMULATED_REWARDS_KEY).unwrap_or(0); // If this is called for the first time, use 0
     balance += amount;
+    balance_store.store(ACCUMULATED_REWARDS_KEY, &balance)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::NotifyAllocation {
+            status: Success,
+        })?),
+    })
+}
+
+fn self_callback<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    message: HookMsg,
+) -> StdResult<HandleResponse> {
+    if env.message.sender != env.contract.address {
+        return Err(StdError::unauthorized());
+    }
 
     let mut messages = vec![];
-    if let Some(hook_msg) = hook {
-        match hook_msg {
-            HookMsg::Redeem { to, amount } => {
-                let amount = amount.unwrap_or(Uint128(balance)).u128();
+    match message {
+        HookMsg::Redeem { to, amount } => {
+            let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+            let mut balance_store = TypedStoreMut::attach(&mut deps.storage);
+            let mut balance: u128 = balance_store.load(ACCUMULATED_REWARDS_KEY).unwrap_or(0); // If this is called for the first time, use 0
 
-                if amount > balance {
-                    return Err(StdError::generic_err(format!(
-                        "insufficient funds to redeem: balance={}, required={}",
-                        balance, amount,
-                    )));
-                }
+            let amount = amount.unwrap_or(Uint128(balance)).u128();
 
-                // NOTE: If no amount was specified, we redeem everything because `amount == balance`
-                balance -= amount;
-
-                messages.push(secret_toolkit::snip20::transfer_msg(
-                    to,
-                    Uint128(amount),
-                    None,
-                    RESPONSE_BLOCK_SIZE,
-                    config.sefi.contract_hash,
-                    config.sefi.address,
-                )?);
+            if amount > balance {
+                return Err(StdError::generic_err(format!(
+                    "insufficient funds to redeem: balance={}, required={}",
+                    balance, amount,
+                )));
             }
+
+            // NOTE: If no amount was specified, we redeem everything because `amount == balance`
+            balance -= amount;
+            balance_store.store(ACCUMULATED_REWARDS_KEY, &balance)?;
+
+            messages.push(secret_toolkit::snip20::transfer_msg(
+                to,
+                Uint128(amount),
+                None,
+                RESPONSE_BLOCK_SIZE,
+                config.sefi.contract_hash,
+                config.sefi.address,
+            )?);
         }
     }
-    balance_store.store(ACCUMULATED_REWARDS_KEY, &balance)?;
 
     Ok(HandleResponse {
         messages,
@@ -149,10 +167,10 @@ fn redeem<S: Storage, A: Api, Q: Querier>(
     update_allocation(
         env.clone(),
         config,
-        Some(to_binary(&HookMsg::Redeem {
+        Some(HookMsg::Redeem {
             to: to.unwrap_or(env.message.sender),
             amount,
-        })?),
+        }),
     )
 }
 
@@ -195,6 +213,26 @@ fn change_beneficiary<S: Storage, A: Api, Q: Querier>(
         data: Some(to_binary(&HandleAnswer::ChangeBeneficiary {
             status: Success,
         })?),
+    })
+}
+
+fn set_master<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    new_master: SecretContract,
+) -> StdResult<HandleResponse> {
+    let mut config_store = TypedStoreMut::attach(&mut deps.storage);
+    let mut config: Config = config_store.load(CONFIG_KEY)?;
+
+    enforce_admin(&config, &env)?;
+
+    config.master = new_master;
+    config_store.store(CONFIG_KEY, &config)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::SetMaster { status: Success })?),
     })
 }
 
@@ -277,31 +315,36 @@ fn enforce_admin(config: &Config, env: &Env) -> StdResult<()> {
     Ok(())
 }
 
-fn update_allocation(env: Env, config: Config, hook: Option<Binary>) -> StdResult<HandleResponse> {
-    Ok(HandleResponse {
-        messages: vec![
-            WasmMsg::Execute {
-                contract_addr: config.master.address,
-                callback_code_hash: config.master.contract_hash,
-                msg: to_binary(&MasterHandleMsg::UpdateAllocation {
-                    spy_addr: env.contract.address.clone(),
-                    spy_hash: env.contract_code_hash.clone(),
-                })?,
-                send: vec![],
-            }
-            .into(),
-            // Last message will be a self-callback to execute the original deposit/redeem
+fn update_allocation(
+    env: Env,
+    config: Config,
+    self_callback: Option<HookMsg>,
+) -> StdResult<HandleResponse> {
+    let mut messages = vec![WasmMsg::Execute {
+        contract_addr: config.master.address,
+        callback_code_hash: config.master.contract_hash,
+        msg: to_binary(&MasterHandleMsg::UpdateAllocation {
+            spy_addr: env.contract.address.clone(),
+            spy_hash: env.contract_code_hash.clone(),
+        })?,
+        send: vec![],
+    }
+    .into()];
+
+    if let Some(cb) = self_callback {
+        messages.push(
             WasmMsg::Execute {
                 contract_addr: env.contract.address,
                 callback_code_hash: env.contract_code_hash,
-                msg: to_binary(&HandleMsg::NotifyAllocation {
-                    amount: Uint128(0),
-                    hook,
-                })?,
+                msg: to_binary(&HandleMsg::SelfCallback { message: cb })?,
                 send: vec![],
             }
             .into(),
-        ],
+        );
+    }
+
+    Ok(HandleResponse {
+        messages,
         log: vec![],
         data: None,
     })

@@ -88,7 +88,6 @@ fn update_allocation<S: Storage, A: Api, Q: Querier>(
             callback_code_hash: state.spy_to_reward.contract_hash,
             msg: to_binary(&LPStakingHandleMsg::NotifyAllocation {
                 amount: Uint128(rewards),
-                hook: None,
             })?,
             send: vec![],
         }

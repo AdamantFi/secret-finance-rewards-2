@@ -61,7 +61,11 @@ pub enum LPStakingHandleMsg {
     // Master callbacks
     NotifyAllocation {
         amount: Uint128,
-        hook: Option<Binary>,
+    },
+
+    // Self Callbacks
+    SelfCallback {
+        message: LPStakingHookMsg,
     },
 }
 
