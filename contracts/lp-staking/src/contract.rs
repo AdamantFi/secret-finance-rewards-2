@@ -157,6 +157,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         LPStakingQueryMsg::TotalLocked {} => query_total_locked(deps),
         LPStakingQueryMsg::Subscribers {} => query_subscribers(deps),
         LPStakingQueryMsg::RewardSources {} => query_reward_sources(deps),
+        LPStakingQueryMsg::Admin {} => query_admin(deps),
         _ => authenticated_queries(deps, msg),
     };
 
@@ -752,6 +753,14 @@ fn query_reward_sources<S: Storage, A: Api, Q: Querier>(
 
     to_binary(&LPStakingQueryAnswer::RewardSources {
         contracts: config.reward_sources,
+    })
+}
+
+fn query_admin<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
+    let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+
+    to_binary(&LPStakingQueryAnswer::Admin {
+        address: config.admin,
     })
 }
 

@@ -117,6 +117,7 @@ pub enum LPStakingReceiveAnswer {
 #[serde(rename_all = "snake_case")]
 pub enum LPStakingQueryMsg {
     TokenInfo {},
+    Admin {},
     ContractStatus {},
     RewardToken {},
     IncentivizedToken {},
@@ -154,6 +155,9 @@ pub enum LPStakingQueryAnswer {
         symbol: String,
         decimals: u8,
         total_supply: Option<Uint128>,
+    },
+    Admin {
+        address: HumanAddr,
     },
     Rewards {
         rewards: Uint128,
