@@ -24,7 +24,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         admin: env.message.sender,
         gov_token_addr: msg.gov_token_addr,
         gov_token_hash: msg.gov_token_hash,
-        total_weight: 0,
+        total_weight: 1, // Initializing as 1 so it won't panic if there's 0 total_weight
         minting_schedule: mint_schedule,
     };
 
@@ -356,7 +356,7 @@ fn get_spy_rewards(
         }
     }
 
-    (multiplier * spy_settings.weight as u128) / total_weight as u128
+    (multiplier * spy_settings.weight as u128) / total_weight as u128 // total_weight will never be `0` because it is initialized as `1`
 }
 
 fn enforce_admin(config: State, env: Env) -> StdResult<()> {
