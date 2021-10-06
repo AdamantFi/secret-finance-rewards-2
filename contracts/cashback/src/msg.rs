@@ -149,7 +149,11 @@ pub enum HandleMsg {
     // Master callbacks
     NotifyAllocation {
         amount: Uint128,
-        hook: Option<Binary>,
+    },
+
+    // Self callbacks
+    SelfCallback {
+        message: HookMsg,
     },
 }
 

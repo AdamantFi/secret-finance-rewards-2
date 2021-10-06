@@ -1,5 +1,5 @@
 use crate::types::{Schedule, WeightInfo};
-use cosmwasm_std::{Binary, HumanAddr, Uint128};
+use cosmwasm_std::{HumanAddr, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +16,6 @@ pub enum MasterHandleMsg {
     UpdateAllocation {
         spy_addr: HumanAddr,
         spy_hash: String,
-        hook: Option<Binary>,
     },
 
     // Admin commands

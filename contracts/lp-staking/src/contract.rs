@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    from_binary, to_binary, Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAddr,
+    from_binary, log, to_binary, Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAddr,
     InitResponse, Querier, ReadonlyStorage, StdError, StdResult, Storage, Uint128, WasmMsg,
 };
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
@@ -127,12 +127,9 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         LPStakingHandleMsg::SetViewingKey { key, .. } => set_viewing_key(deps, env, key),
         LPStakingHandleMsg::StopContract {} => stop_contract(deps, env),
         LPStakingHandleMsg::ChangeAdmin { address } => change_admin(deps, env, address),
-        LPStakingHandleMsg::NotifyAllocation { amount, hook } => notify_allocation(
-            deps,
-            env,
-            amount.u128(),
-            hook.map(|h| from_binary(&h).unwrap()),
-        ),
+        LPStakingHandleMsg::NotifyAllocation { amount } => {
+            notify_allocation(deps, env, amount.u128())
+        }
         LPStakingHandleMsg::AddSubs { contracts } => add_subscribers(deps, env, contracts),
         LPStakingHandleMsg::RemoveSubs { contracts } => remove_subscribers(deps, env, contracts),
         LPStakingHandleMsg::AddRewardSources { contracts } => {
@@ -141,6 +138,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         LPStakingHandleMsg::RemoveRewardSources { contracts } => {
             remove_reward_sources(deps, env, contracts)
         }
+        LPStakingHandleMsg::SelfCallback { message } => self_callback(deps, env, message),
         _ => Err(StdError::generic_err("Unavailable or unknown action")),
     };
 
@@ -159,6 +157,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         LPStakingQueryMsg::TotalLocked {} => query_total_locked(deps),
         LPStakingQueryMsg::Subscribers {} => query_subscribers(deps),
         LPStakingQueryMsg::RewardSources {} => query_reward_sources(deps),
+        LPStakingQueryMsg::Admin {} => query_admin(deps),
         _ => authenticated_queries(deps, msg),
     };
 
@@ -213,7 +212,6 @@ fn notify_allocation<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     amount: u128,
-    hook: Option<LPStakingHookMsg>,
 ) -> StdResult<HandleResponse> {
     let config = TypedStore::<Config, S>::attach(&deps.storage).load(CONFIG_KEY)?;
     if config
@@ -227,26 +225,35 @@ fn notify_allocation<S: Storage, A: Api, Q: Querier>(
         ));
     }
 
-    let reward_pool = update_rewards(deps, amount)?;
+    update_rewards(deps, amount)?;
 
-    let mut response = Ok(HandleResponse {
+    Ok(HandleResponse {
         messages: vec![],
-        log: vec![],
+        log: vec![log("notify_allocation", env.message.sender.to_string())],
         data: None,
-    });
+    })
+}
 
-    if let Some(hook_msg) = hook {
-        response = match hook_msg {
-            LPStakingHookMsg::Deposit { from, amount } => {
-                deposit_hook(deps, env, config, reward_pool, from, amount.u128())
-            }
-            LPStakingHookMsg::Redeem { to, amount } => {
-                redeem_hook(deps, env, config, reward_pool, to, amount)
-            }
-        }
+fn self_callback<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    message: LPStakingHookMsg,
+) -> StdResult<HandleResponse> {
+    if env.message.sender != env.contract.address {
+        return Err(StdError::unauthorized());
     }
 
-    response
+    let reward_pool: RewardPool = TypedStore::attach(&deps.storage).load(REWARD_POOL_KEY)?;
+    let config = TypedStore::<Config, S>::attach(&deps.storage).load(CONFIG_KEY)?;
+
+    match message {
+        LPStakingHookMsg::Deposit { from, amount } => {
+            deposit_hook(deps, env, config, reward_pool, from, amount.u128())
+        }
+        LPStakingHookMsg::Redeem { to, amount } => {
+            redeem_hook(deps, env, config, reward_pool, to, amount)
+        }
+    }
 }
 
 fn deposit<S: Storage, A: Api, Q: Querier>(
@@ -267,10 +274,10 @@ fn deposit<S: Storage, A: Api, Q: Querier>(
     update_allocation(
         env,
         config,
-        Some(to_binary(&LPStakingHookMsg::Deposit {
+        Some(LPStakingHookMsg::Deposit {
             from,
             amount: Uint128(amount),
-        })?),
+        }),
     )
 }
 
@@ -334,10 +341,10 @@ fn redeem<S: Storage, A: Api, Q: Querier>(
     update_allocation(
         env.clone(),
         config,
-        Some(to_binary(&LPStakingHookMsg::Redeem {
+        Some(LPStakingHookMsg::Redeem {
             to: env.message.sender,
             amount,
-        })?),
+        }),
     )
 }
 
@@ -749,6 +756,14 @@ fn query_reward_sources<S: Storage, A: Api, Q: Querier>(
     })
 }
 
+fn query_admin<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
+    let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+
+    to_binary(&LPStakingQueryAnswer::Admin {
+        address: config.admin,
+    })
+}
+
 // Helper functions
 
 fn enforce_admin(config: &Config, env: Env) -> StdResult<()> {
@@ -789,42 +804,35 @@ fn update_rewards<S: Storage, A: Api, Q: Querier>(
     Ok(reward_pool)
 }
 
-fn update_allocation(env: Env, config: Config, hook: Option<Binary>) -> StdResult<HandleResponse> {
+fn update_allocation(
+    env: Env,
+    config: Config,
+    self_callback: Option<LPStakingHookMsg>,
+) -> StdResult<HandleResponse> {
     let mut messages = vec![];
 
-    if config.reward_sources.len() > 1 {
-        for rs in config
-            .reward_sources
-            .iter()
-            .take(config.reward_sources.len() - 1)
-        {
-            messages.push(
-                WasmMsg::Execute {
-                    contract_addr: rs.address.clone(),
-                    callback_code_hash: rs.contract_hash.clone(),
-                    msg: to_binary(&MasterHandleMsg::UpdateAllocation {
-                        spy_addr: env.contract.address.clone(),
-                        spy_hash: env.contract_code_hash.clone(),
-                        hook: None,
-                    })?,
-                    send: vec![],
-                }
-                .into(),
-            );
-        }
-    }
-
-    // Push the hook message only for the last UpdateAllocation message
-    if let Some(rs) = config.reward_sources.last() {
+    for rs in config.reward_sources.iter() {
         messages.push(
             WasmMsg::Execute {
                 contract_addr: rs.address.clone(),
                 callback_code_hash: rs.contract_hash.clone(),
                 msg: to_binary(&MasterHandleMsg::UpdateAllocation {
-                    spy_addr: env.contract.address,
-                    spy_hash: env.contract_code_hash,
-                    hook,
+                    spy_addr: env.contract.address.clone(),
+                    spy_hash: env.contract_code_hash.clone(),
                 })?,
+                send: vec![],
+            }
+            .into(),
+        );
+    }
+
+    if let Some(cb) = self_callback {
+        // Last message will be a self-callback to execute the original deposit/redeem
+        messages.push(
+            WasmMsg::Execute {
+                contract_addr: env.contract.address,
+                callback_code_hash: env.contract_code_hash,
+                msg: to_binary(&LPStakingHandleMsg::SelfCallback { message: cb })?,
                 send: vec![],
             }
             .into(),

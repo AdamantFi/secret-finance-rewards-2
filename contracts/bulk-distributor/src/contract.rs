@@ -47,7 +47,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
     match msg {
-        HandleMsg::UpdateAllocation { hook, .. } => update_allocation(deps, env, hook),
+        HandleMsg::UpdateAllocation { .. } => update_allocation(deps, env),
         HandleMsg::Receive {
             from, amount, msg, ..
         } => receive(deps, env, from, amount.u128(), msg),
@@ -58,7 +58,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 fn update_allocation<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    hook: Option<Binary>,
 ) -> StdResult<HandleResponse> {
     let mut state = config_read(&deps.storage).load()?;
 
@@ -89,7 +88,6 @@ fn update_allocation<S: Storage, A: Api, Q: Querier>(
             callback_code_hash: state.spy_to_reward.contract_hash,
             msg: to_binary(&LPStakingHandleMsg::NotifyAllocation {
                 amount: Uint128(rewards),
-                hook,
             })?,
             send: vec![],
         }
@@ -158,7 +156,7 @@ fn new_bulk_reward<S: Storage, A: Api, Q: Querier>(
 
     // Updates and notifies allocation to the reward contract. This should happen before the new
     // bulk is added to the bulk list, to not mess up the rewards calculation
-    let update_allocation_resp = update_allocation(deps, env.clone(), None);
+    let update_allocation_resp = update_allocation(deps, env.clone());
 
     let new_bulk = RewardBulk {
         end_block: env.block.height + distribute_over,

@@ -1,9 +1,9 @@
 /// This contract implements SNIP-20 standard:
 /// https://github.com/SecretFoundation/SNIPs/blob/master/SNIP-20.md
 use cosmwasm_std::{
-    from_binary, log, to_binary, Api, Binary, CanonicalAddr, CosmosMsg, Env, Extern,
-    HandleResponse, HumanAddr, InitResponse, Querier, QueryResult, ReadonlyStorage, StdError,
-    StdResult, Storage, Uint128, WasmMsg,
+    log, to_binary, Api, Binary, CanonicalAddr, CosmosMsg, Env, Extern, HandleResponse, HumanAddr,
+    InitResponse, Querier, QueryResult, ReadonlyStorage, StdError, StdResult, Storage, Uint128,
+    WasmMsg,
 };
 
 use crate::msg::{
@@ -175,18 +175,14 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::SetMinters { minters, .. } => set_minters(deps, env, minters),
 
         // SPY
-        HandleMsg::NotifyAllocation { amount, hook } => notify_allocation(
-            deps,
-            env,
-            amount.u128(),
-            hook.map(|h| from_binary(&h).unwrap()),
-        ),
+        HandleMsg::NotifyAllocation { amount } => notify_allocation(deps, env, amount.u128()),
 
         // Other
         HandleMsg::ChangeAdmin { address, .. } => change_admin(deps, env, address),
         HandleMsg::SetContractStatus { level, .. } => set_contract_status(deps, env, level),
         HandleMsg::SetSefi { address, hash } => set_sefi(deps, env, address, hash),
         HandleMsg::SetMaster { address, hash } => set_master(deps, env, address, hash),
+        HandleMsg::SelfCallback { message } => self_callback(deps, env, message),
     };
 
     pad_response(response)
@@ -769,11 +765,11 @@ fn try_burn_from<S: Storage, A: Api, Q: Querier>(
     update_allocation(
         env,
         master,
-        Some(to_binary(&HookMsg::Burn {
+        Some(HookMsg::Burn {
             owner: owner.clone(),
             amount,
             memo,
-        })?),
+        }),
     )
 }
 
@@ -955,11 +951,11 @@ fn try_burn<S: Storage, A: Api, Q: Querier>(
     update_allocation(
         env,
         master,
-        Some(to_binary(&HookMsg::Burn {
+        Some(HookMsg::Burn {
             owner: sender,
             amount,
             memo,
-        })?),
+        }),
     )
 }
 
@@ -1027,8 +1023,13 @@ fn notify_allocation<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     amount: u128,
-    hook: Option<HookMsg>,
 ) -> StdResult<HandleResponse> {
+    let master: SecretContract = TypedStore::attach(&deps.storage).load(KEY_MASTER_CONTRACT)?;
+    let constants = ReadonlyConfig::from_storage(&deps.storage).constants()?;
+    if env.message.sender != master.address && env.message.sender != constants.admin {
+        return Err(StdError::unauthorized());
+    }
+
     let mut reward_balance = TypedStoreMut::<u128, S>::attach(&mut deps.storage)
         .load(REWARD_BALANCE_KEY)
         .unwrap_or(0);
@@ -1038,23 +1039,29 @@ fn notify_allocation<S: Storage, A: Api, Q: Querier>(
     TypedStoreMut::<u128, S>::attach(&mut deps.storage)
         .store(REWARD_BALANCE_KEY, &reward_balance)?;
 
-    let mut response = Ok(HandleResponse {
+    Ok(HandleResponse {
         messages: vec![],
         log: vec![],
         data: None,
-    });
+    })
+}
 
-    if let Some(hook_msg) = hook {
-        response = match hook_msg {
-            HookMsg::Burn {
-                owner,
-                amount,
-                memo,
-            } => burn_hook(deps, env, owner, amount, memo),
-        };
+fn self_callback<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    message: HookMsg,
+) -> StdResult<HandleResponse> {
+    if env.message.sender != env.contract.address {
+        return Err(StdError::unauthorized());
     }
 
-    response
+    match message {
+        HookMsg::Burn {
+            owner,
+            amount,
+            memo,
+        } => burn_hook(deps, env, owner, amount, memo),
+    }
 }
 
 fn perform_transfer<T: Storage>(
@@ -1107,20 +1114,33 @@ fn check_if_admin<S: Storage>(config: &Config<S>, account: &HumanAddr) -> StdRes
 fn update_allocation(
     env: Env,
     master: SecretContract,
-    hook: Option<Binary>,
+    self_callback: Option<HookMsg>,
 ) -> StdResult<HandleResponse> {
+    let mut messages = vec![WasmMsg::Execute {
+        contract_addr: master.address,
+        callback_code_hash: master.hash,
+        msg: to_binary(&MasterHandleMsg::UpdateAllocation {
+            spy_addr: env.contract.address.clone(),
+            spy_hash: env.contract_code_hash.clone(),
+        })?,
+        send: vec![],
+    }
+    .into()];
+
+    if let Some(cb) = self_callback {
+        messages.push(
+            WasmMsg::Execute {
+                contract_addr: env.contract.address,
+                callback_code_hash: env.contract_code_hash,
+                msg: to_binary(&HandleMsg::SelfCallback { message: cb })?,
+                send: vec![],
+            }
+            .into(),
+        );
+    }
+
     Ok(HandleResponse {
-        messages: vec![WasmMsg::Execute {
-            contract_addr: master.address,
-            callback_code_hash: master.hash,
-            msg: to_binary(&MasterHandleMsg::UpdateAllocation {
-                spy_addr: env.contract.address,
-                spy_hash: env.contract_code_hash,
-                hook,
-            })?,
-            send: vec![],
-        }
-        .into()],
+        messages,
         log: vec![],
         data: None,
     })

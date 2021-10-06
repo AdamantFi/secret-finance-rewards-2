@@ -1,4 +1,4 @@
-use cosmwasm_std::{Binary, HumanAddr, Uint128};
+use cosmwasm_std::{HumanAddr, Uint128};
 use schemars::JsonSchema;
 use scrt_finance::types::SecretContract;
 use serde::{Deserialize, Serialize};
@@ -27,11 +27,18 @@ pub enum HandleMsg {
         address: HumanAddr,
     },
     RefreshBalance {},
+    SetMaster {
+        contract: SecretContract,
+    },
 
     // Master callbacks
     NotifyAllocation {
         amount: Uint128,
-        hook: Option<Binary>,
+    },
+
+    // Self callbacks
+    SelfCallback {
+        message: HookMsg,
     },
 }
 
@@ -42,6 +49,8 @@ pub enum HandleAnswer {
     ChangeAdmin { status: ResponseStatus },
     ChangeBeneficiary { status: ResponseStatus },
     RefreshBalance { status: ResponseStatus },
+    NotifyAllocation { status: ResponseStatus },
+    SetMaster { status: ResponseStatus },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
