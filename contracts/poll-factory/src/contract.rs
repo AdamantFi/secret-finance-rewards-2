@@ -158,7 +158,7 @@ fn new_poll<S: Storage, A: Api, Q: Querier>(
             code_hash: env.contract_code_hash,
             msg: to_binary(&RegisterForUpdates {
                 challenge: key.to_string(),
-                end_time: env.block.time + poll_config.duration, // If this fails, we have bigger problems than this :)
+                end_time: env.block.time + poll_config.duration, // If this overflows, we have bigger problems than this :)
             })?,
         }),
     };
@@ -198,12 +198,14 @@ fn register_for_updates<S: Storage, A: Api, Q: Querier>(
         TypedStoreMut::<Challenge, S>::attach(&mut deps.storage).remove(CURRENT_CHALLENGE_KEY);
     }
 
+    let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
     let mut active_polls_store = TypedStoreMut::<Vec<ActivePoll>, S>::attach(&mut deps.storage);
     let mut active_polls = active_polls_store
         .load(ACTIVE_POLLS_KEY)
         .unwrap_or_default();
     active_polls.push(ActivePoll {
         address: env.message.sender.clone(),
+        hash: config.poll_contract.code_hash,
         end_time,
     });
     active_polls_store.store(ACTIVE_POLLS_KEY, &active_polls)?;
@@ -236,7 +238,7 @@ fn update_voting_power<S: Storage, A: Api, Q: Querier>(
     for poll in active_polls {
         messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: poll.address,
-            callback_code_hash: config.poll_contract.code_hash.clone(),
+            callback_code_hash: poll.hash,
             msg: update_msg.clone(),
             send: vec![],
         }))

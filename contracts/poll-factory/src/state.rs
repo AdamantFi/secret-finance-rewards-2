@@ -23,5 +23,6 @@ pub struct Config {
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct ActivePoll {
     pub address: HumanAddr,
+    pub hash: String,
     pub end_time: u64,
 }
