@@ -6,7 +6,6 @@
 
 # Build results
 target/
-*.wasm.gz
 
 # IDEs
 .vscode/
@@ -15,8 +14,6 @@ target/
 
 # Auto-gen
 .cargo-ok
-
-build/
 
 node_modules/
 artifacts/
